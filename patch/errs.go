@@ -2,6 +2,7 @@ package patch
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 )
@@ -28,7 +29,7 @@ func (e OpMismatchTypeErr) Error() string {
 type OpMissingMapKeyErr struct {
 	Key  string
 	Path Pointer
-	Obj  map[interface{}]interface{}
+	Obj  reflect.Value
 }
 
 func (e OpMissingMapKeyErr) Error() string {
@@ -37,27 +38,30 @@ func (e OpMissingMapKeyErr) Error() string {
 }
 
 func (e OpMissingMapKeyErr) siblingKeysErrStr() string {
-	if len(e.Obj) == 0 {
+	if e.Obj.Len() == 0 {
 		return "found no other map keys"
 	}
+
 	var keys []string
-	for key, _ := range e.Obj {
-		if keyStr, ok := key.(string); ok {
-			keys = append(keys, keyStr)
+	for _, key := range e.Obj.MapKeys() {
+		if k := dereference(key); k.Kind() == reflect.String {
+			keys = append(keys, k.String())
 		}
 	}
+
 	sort.Sort(sort.StringSlice(keys))
+
 	return "found map keys: '" + strings.Join(keys, "', '") + "'"
 }
 
 type OpMissingIndexErr struct {
 	Idx  int
-	Obj  []interface{}
+	Obj  reflect.Value
 	Path Pointer
 }
 
 func (e OpMissingIndexErr) Error() string {
-	return fmt.Sprintf("Expected to find array index '%d' but found array of length '%d' for path '%s'", e.Idx, len(e.Obj), e.Path)
+	return fmt.Sprintf("Expected to find array index '%d' but found array of length '%d' for path '%s'", e.Idx, e.Obj.Len(), e.Path)
 }
 
 type OpMultipleMatchingIndexErr struct {

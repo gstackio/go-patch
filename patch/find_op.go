@@ -2,6 +2,7 @@ package patch
 
 import (
 	"fmt"
+	"reflect"
 )
 
 type FindOp struct {
@@ -23,20 +24,20 @@ func (op FindOp) Apply(doc interface{}) (interface{}, error) {
 
 		switch typedToken := token.(type) {
 		case IndexToken:
-			typedObj, ok := obj.([]interface{})
-			if !ok {
+			ptr := reflect.ValueOf(obj)
+			if ptr.Kind() != reflect.Slice {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
 
-			idx, err := ArrayIndex{Index: typedToken.Index, Modifiers: typedToken.Modifiers, Array: typedObj, Path: currPath}.Concrete()
+			idx, err := ArrayIndex{Index: typedToken.Index, Modifiers: typedToken.Modifiers, Array: ptr, Path: currPath}.Concrete()
 			if err != nil {
 				return nil, err
 			}
 
 			if isLast {
-				return typedObj[idx], nil
+				return ptr.Index(idx).Interface(), nil
 			} else {
-				obj = typedObj[idx]
+				obj = ptr.Index(idx).Interface()
 			}
 
 		case AfterLastIndexToken:
@@ -44,21 +45,13 @@ func (op FindOp) Apply(doc interface{}) (interface{}, error) {
 			return nil, fmt.Errorf(errMsg, op.Path)
 
 		case MatchingIndexToken:
-			typedObj, ok := obj.([]interface{})
-			if !ok {
+			ptr := reflect.ValueOf(obj)
+			if ptr.Kind() != reflect.Slice {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
 
-			var idxs []int
+			idxs := findMapIndices(ptr, typedToken.Key, typedToken.Value)
 
-			for itemIdx, item := range typedObj {
-				typedItem, ok := item.(map[interface{}]interface{})
-				if ok {
-					if typedItem[typedToken.Key] == typedToken.Value {
-						idxs = append(idxs, itemIdx)
-					}
-				}
-			}
 
 			if typedToken.Optional && len(idxs) == 0 {
 				// todo /blah=foo?:after, modifiers
@@ -72,33 +65,43 @@ func (op FindOp) Apply(doc interface{}) (interface{}, error) {
 					return nil, OpMultipleMatchingIndexErr{currPath, idxs}
 				}
 
-				idx, err := ArrayIndex{Index: idxs[0], Modifiers: typedToken.Modifiers, Array: typedObj, Path: currPath}.Concrete()
+				idx, err := ArrayIndex{Index: idxs[0], Modifiers: typedToken.Modifiers, Array: ptr, Path: currPath}.Concrete()
 				if err != nil {
 					return nil, err
 				}
 
 				if isLast {
-					return typedObj[idx], nil
+					return ptr.Index(idx).Elem().Interface(), nil
 				} else {
-					obj = typedObj[idx]
+					obj = ptr.Index(idx).Elem().Interface()
 				}
 			}
 
 		case KeyToken:
-			typedObj, ok := obj.(map[interface{}]interface{})
-			if !ok {
+			ptr := reflect.ValueOf(obj)
+			if ptr.Kind() != reflect.Map {
 				return nil, NewOpMapMismatchTypeErr(currPath, obj)
 			}
 
 			var found bool
 
-			obj, found = typedObj[typedToken.Key]
-			if !found && !typedToken.Optional {
-				return nil, OpMissingMapKeyErr{typedToken.Key, currPath, typedObj}
+			if mapValue := ptr.MapIndex(reflect.ValueOf(typedToken.Key)); mapValue.IsValid() {
+				obj = mapValue.Interface()
+				found = true
+			} else {
+				if !typedToken.Optional {
+					return nil, OpMissingMapKeyErr{typedToken.Key, currPath, ptr}
+				}
+
+				found = false
+				obj = nil
 			}
 
 			if isLast {
-				return typedObj[typedToken.Key], nil
+				if v := ptr.MapIndex(reflect.ValueOf(typedToken.Key)); v.IsValid() {
+					return v.Interface(), nil
+				}
+				return nil, nil
 			} else {
 				if !found {
 					// Determine what type of value to create based on next token

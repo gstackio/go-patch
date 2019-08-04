@@ -2,12 +2,13 @@ package patch
 
 import (
 	"fmt"
+	"reflect"
 )
 
 type ArrayIndex struct {
 	Index     int
 	Modifiers []Modifier
-	Array     []interface{}
+	Array     reflect.Value
 	Path      Pointer
 }
 
@@ -25,12 +26,12 @@ func (i ArrayIndex) Concrete() (int, error) {
 		}
 	}
 
-	if result >= len(i.Array) || (-result)-1 >= len(i.Array) {
+	if result >= i.Array.Len() || (-result)-1 >= i.Array.Len() {
 		return 0, OpMissingIndexErr{result, i.Array, i.Path}
 	}
 
 	if result < 0 {
-		result = len(i.Array) + result
+		result = i.Array.Len() + result
 	}
 
 	return result, nil

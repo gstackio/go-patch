@@ -2,12 +2,13 @@ package patch
 
 import (
 	"fmt"
+	"reflect"
 )
 
 type ArrayInsertion struct {
 	Index     int
 	Modifiers []Modifier
-	Array     []interface{}
+	Array     reflect.Value
 	Path      Pointer
 }
 
@@ -49,22 +50,24 @@ func (i ArrayInsertion) Concrete() (ArrayInsertionIndex, error) {
 		return ArrayInsertionIndex{}, err
 	}
 
-	if after && num != len(i.Array) {
+	if after && num != i.Array.Len() {
 		num += 1
 	}
 
 	return ArrayInsertionIndex{num, before || after}, nil
 }
 
-func (i ArrayInsertionIndex) Update(array []interface{}, obj interface{}) []interface{} {
+func (i ArrayInsertionIndex) Update(array reflect.Value, obj interface{}) interface{} {
 	if i.insert {
-		newAry := []interface{}{}
-		newAry = append(newAry, array[:i.number]...) // not inclusive
-		newAry = append(newAry, obj)
-		newAry = append(newAry, array[i.number:]...) // inclusive
-		return newAry
+		newAry := reflect.ValueOf([]interface{}{})
+
+		newAry = reflect.AppendSlice(newAry, array.Slice(0, i.number)) // not inclusive
+		newAry = reflect.Append(newAry, reflect.ValueOf(obj))
+		newAry = reflect.AppendSlice(newAry, array.Slice(i.number, array.Len())) // inclusive
+
+		return newAry.Interface()
 	}
 
-	array[i.number] = obj
-	return array
+	array.Index(i.number).Set(reflect.ValueOf(obj))
+	return array.Interface()
 }

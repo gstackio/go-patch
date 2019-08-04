@@ -3,6 +3,7 @@ package patch_test
 import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	. "github.com/cppforlife/go-patch/patch"
 )
@@ -183,6 +184,7 @@ var _ = Describe("ReplaceOp.Apply", func() {
 
 			res, err := ReplaceOp{Path: MustNewPointerFromString("/key=val"), Value: 100}.Apply(doc)
 			Expect(err).ToNot(HaveOccurred())
+
 			Expect(res).To(Equal([]interface{}{
 				100,
 				map[interface{}]interface{}{"key": "val2"},
@@ -347,6 +349,7 @@ var _ = Describe("ReplaceOp.Apply", func() {
 
 			res, err = ReplaceOp{Path: MustNewPointerFromString("/abc")}.Apply(doc)
 			Expect(err).ToNot(HaveOccurred())
+
 			Expect(res).To(Equal(map[interface{}]interface{}{"abc": nil, "xyz": "xyz"}))
 		})
 
@@ -413,19 +416,21 @@ var _ = Describe("ReplaceOp.Apply", func() {
 		It("returns an error if key does not exist", func() {
 			doc := map[interface{}]interface{}{"xyz": "xyz", 123: "xyz", "other-xyz": "xyz"}
 
+			format.TruncatedDiff = false
+
 			_, err := ReplaceOp{Path: MustNewPointerFromString("/abc")}.Apply(doc)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal(
-				"Expected to find a map key 'abc' for path '/abc' (found map keys: 'other-xyz', 'xyz')"))
+			Expect(err).To(MatchError(
+				"Expected to find a map key 'abc' for path '/abc' (found map keys: 'other-xyz', 'xyz')",
+			))
 		})
 
 		It("returns an error without other found keys when there are no keys and key does not exist", func() {
 			doc := map[interface{}]interface{}{}
 
 			_, err := ReplaceOp{Path: MustNewPointerFromString("/abc")}.Apply(doc)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal(
-				"Expected to find a map key 'abc' for path '/abc' (found no other map keys)"))
+			Expect(err).To(MatchError(
+				"Expected to find a map key 'abc' for path '/abc' (found no other map keys)",
+			))
 		})
 
 		It("creates missing key if key is not expected to exist", func() {

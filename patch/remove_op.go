@@ -2,6 +2,7 @@ package patch
 
 import (
 	"fmt"
+	"reflect"
 )
 
 type RemoveOp struct {
@@ -24,42 +25,36 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 
 		switch typedToken := token.(type) {
 		case IndexToken:
-			typedObj, ok := obj.([]interface{})
-			if !ok {
+			ptr := reflect.ValueOf(obj)
+			if ptr.Kind() != reflect.Slice {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
 
-			idx, err := ArrayIndex{Index: typedToken.Index, Modifiers: typedToken.Modifiers, Array: typedObj, Path: currPath}.Concrete()
+			idx, err := ArrayIndex{Index: typedToken.Index, Modifiers: typedToken.Modifiers, Array: ptr, Path: currPath}.Concrete()
 			if err != nil {
 				return nil, err
 			}
 
 			if isLast {
-				newAry := []interface{}{}
-				newAry = append(newAry, typedObj[:idx]...)
-				newAry = append(newAry, typedObj[idx+1:]...)
-				prevUpdate(newAry)
+				newAry := reflect.ValueOf([]interface{}{})
+				newAry = reflect.AppendSlice(newAry, ptr.Slice(0, idx))           // not inclusive
+				newAry = reflect.AppendSlice(newAry, ptr.Slice(idx+1, ptr.Len())) // inclusive
+
+				prevUpdate(newAry.Interface())
 			} else {
-				obj = typedObj[idx]
-				prevUpdate = func(newObj interface{}) { typedObj[idx] = newObj }
+				obj = ptr.Index(idx).Interface()
+				prevUpdate = func(newObj interface{}) {
+					ptr.Index(idx).Set(reflect.ValueOf(newObj))
+				}
 			}
 
 		case MatchingIndexToken:
-			typedObj, ok := obj.([]interface{})
-			if !ok {
+			ptr := reflect.ValueOf(obj)
+			if ptr.Kind() != reflect.Slice {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
 
-			var idxs []int
-
-			for itemIdx, item := range typedObj {
-				typedItem, ok := item.(map[interface{}]interface{})
-				if ok {
-					if typedItem[typedToken.Key] == typedToken.Value {
-						idxs = append(idxs, itemIdx)
-					}
-				}
-			}
+			idxs := findMapIndices(ptr, typedToken.Key, typedToken.Value)
 
 			if typedToken.Optional && len(idxs) == 0 {
 				return doc, nil
@@ -69,42 +64,42 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 				return nil, OpMultipleMatchingIndexErr{currPath, idxs}
 			}
 
-			idx, err := ArrayIndex{Index: idxs[0], Modifiers: typedToken.Modifiers, Array: typedObj, Path: currPath}.Concrete()
+			idx, err := ArrayIndex{Index: idxs[0], Modifiers: typedToken.Modifiers, Array: ptr, Path: currPath}.Concrete()
 			if err != nil {
 				return nil, err
 			}
 
 			if isLast {
-				newAry := []interface{}{}
-				newAry = append(newAry, typedObj[:idx]...)
-				newAry = append(newAry, typedObj[idx+1:]...)
-				prevUpdate(newAry)
+				newAry := reflect.ValueOf([]interface{}{})
+				newAry = reflect.AppendSlice(newAry, ptr.Slice(0, idx))           // not inclusive
+				newAry = reflect.AppendSlice(newAry, ptr.Slice(idx+1, ptr.Len())) // inclusive
+				prevUpdate(newAry.Interface())
 			} else {
-				obj = typedObj[idx]
+				obj = ptr.Index(idx).Interface()
 				// no need to change prevUpdate since matching item can only be a map
 			}
 
 		case KeyToken:
-			typedObj, ok := obj.(map[interface{}]interface{})
-			if !ok {
+			ptr := reflect.ValueOf(obj)
+			if ptr.Kind() != reflect.Map {
 				return nil, NewOpMapMismatchTypeErr(currPath, obj)
 			}
 
-			var found bool
-
-			obj, found = typedObj[typedToken.Key]
-			if !found {
+			if mapValue := ptr.MapIndex(reflect.ValueOf(typedToken.Key)); !mapValue.IsValid() {
 				if typedToken.Optional {
 					return doc, nil
 				}
-
-				return nil, OpMissingMapKeyErr{typedToken.Key, currPath, typedObj}
+				return nil, OpMissingMapKeyErr{typedToken.Key, currPath, ptr}
+			} else {
+				obj = mapValue.Interface()
 			}
 
 			if isLast {
-				delete(typedObj, typedToken.Key)
+				ptr.SetMapIndex(reflect.ValueOf(typedToken.Key), reflect.Value{})
 			} else {
-				prevUpdate = func(newObj interface{}) { typedObj[typedToken.Key] = newObj }
+				prevUpdate = func(newObj interface{}) {
+					ptr.SetMapIndex(reflect.ValueOf(typedToken.Key), reflect.ValueOf(newObj))
+				}
 			}
 
 		default:
