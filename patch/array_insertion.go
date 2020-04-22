@@ -2,12 +2,14 @@ package patch
 
 import (
 	"fmt"
+
+	"github.com/cppforlife/go-patch/yamltree"
 )
 
 type ArrayInsertion struct {
 	Index     int
 	Modifiers []Modifier
-	Array     []interface{}
+	Array     yamltree.YamlSequence
 	Path      Pointer
 }
 
@@ -49,22 +51,17 @@ func (i ArrayInsertion) Concrete() (ArrayInsertionIndex, error) {
 		return ArrayInsertionIndex{}, err
 	}
 
-	if after && num != len(i.Array) {
+	if after && num != i.Array.Len() {
 		num += 1
 	}
 
 	return ArrayInsertionIndex{num, before || after}, nil
 }
 
-func (i ArrayInsertionIndex) Update(array []interface{}, obj interface{}) []interface{} {
+func (i ArrayInsertionIndex) Update(array yamltree.YamlSequence, obj yamltree.YamlNode) yamltree.YamlSequence {
 	if i.insert {
-		newAry := []interface{}{}
-		newAry = append(newAry, array[:i.number]...) // not inclusive
-		newAry = append(newAry, obj)
-		newAry = append(newAry, array[i.number:]...) // inclusive
-		return newAry
+		return array.InsertAt(obj, i.number)
 	}
 
-	array[i.number] = obj
-	return array
+	return array.ReplaceAt(obj, i.number)
 }

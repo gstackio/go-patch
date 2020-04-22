@@ -4,19 +4,21 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/cppforlife/go-patch/yamltree"
 )
 
 type OpMismatchTypeErr struct {
 	Type_ string
 	Path  Pointer
-	Obj   interface{}
+	Obj   yamltree.YamlNode
 }
 
-func NewOpArrayMismatchTypeErr(path Pointer, obj interface{}) OpMismatchTypeErr {
+func NewOpArrayMismatchTypeErr(path Pointer, obj yamltree.YamlNode) OpMismatchTypeErr {
 	return OpMismatchTypeErr{"an array", path, obj}
 }
 
-func NewOpMapMismatchTypeErr(path Pointer, obj interface{}) OpMismatchTypeErr {
+func NewOpMapMismatchTypeErr(path Pointer, obj yamltree.YamlNode) OpMismatchTypeErr {
 	return OpMismatchTypeErr{"a map", path, obj}
 }
 
@@ -28,7 +30,7 @@ func (e OpMismatchTypeErr) Error() string {
 type OpMissingMapKeyErr struct {
 	Key  string
 	Path Pointer
-	Obj  map[interface{}]interface{}
+	Obj  yamltree.YamlMapping
 }
 
 func (e OpMissingMapKeyErr) Error() string {
@@ -37,27 +39,25 @@ func (e OpMissingMapKeyErr) Error() string {
 }
 
 func (e OpMissingMapKeyErr) siblingKeysErrStr() string {
-	if len(e.Obj) == 0 {
+	if e.Obj.Len() == 0 {
 		return "found no other map keys"
 	}
 	var keys []string
-	for key, _ := range e.Obj {
-		if keyStr, ok := key.(string); ok {
-			keys = append(keys, keyStr)
-		}
-	}
+	e.Obj.EachKeys(func(key string) {
+		keys = append(keys, key)
+	})
 	sort.Sort(sort.StringSlice(keys))
 	return "found map keys: '" + strings.Join(keys, "', '") + "'"
 }
 
 type OpMissingIndexErr struct {
 	Idx  int
-	Obj  []interface{}
+	Obj  yamltree.YamlSequence
 	Path Pointer
 }
 
 func (e OpMissingIndexErr) Error() string {
-	return fmt.Sprintf("Expected to find array index '%d' but found array of length '%d' for path '%s'", e.Idx, len(e.Obj), e.Path)
+	return fmt.Sprintf("Expected to find array index '%d' but found array of length '%d' for path '%s'", e.Idx, e.Obj.Len(), e.Path)
 }
 
 type OpMultipleMatchingIndexErr struct {

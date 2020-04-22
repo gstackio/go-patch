@@ -3,6 +3,8 @@ package patch
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/cppforlife/go-patch/yamltree"
 )
 
 type TestOp struct {
@@ -11,14 +13,14 @@ type TestOp struct {
 	Absent bool
 }
 
-func (op TestOp) Apply(doc interface{}) (interface{}, error) {
+func (op TestOp) Apply(doc yamltree.YamlNode) (yamltree.YamlNode, error) {
 	if op.Absent {
 		return op.checkAbsence(doc)
 	}
 	return op.checkValue(doc)
 }
 
-func (op TestOp) checkAbsence(doc interface{}) (interface{}, error) {
+func (op TestOp) checkAbsence(doc yamltree.YamlNode) (yamltree.YamlNode, error) {
 	_, err := FindOp{Path: op.Path}.Apply(doc)
 	if err != nil {
 		if typedErr, ok := err.(OpMissingIndexErr); ok {
@@ -37,13 +39,13 @@ func (op TestOp) checkAbsence(doc interface{}) (interface{}, error) {
 	return nil, fmt.Errorf("Expected to not find '%s'", op.Path)
 }
 
-func (op TestOp) checkValue(doc interface{}) (interface{}, error) {
+func (op TestOp) checkValue(doc yamltree.YamlNode) (yamltree.YamlNode, error) {
 	foundVal, err := FindOp{Path: op.Path}.Apply(doc)
 	if err != nil {
 		return nil, err
 	}
 
-	if !reflect.DeepEqual(foundVal, op.Value) {
+	if !reflect.DeepEqual(foundVal, yamltree.CreateYamlNodeV2(op.Value)) {
 		return nil, fmt.Errorf("Found value does not match expected value")
 	}
 

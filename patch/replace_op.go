@@ -2,21 +2,23 @@ package patch
 
 import (
 	"fmt"
+	"reflect"
 
-	"gopkg.in/yaml.v2"
+	"github.com/cppforlife/go-patch/yamltree"
 )
 
 type ReplaceOp struct {
 	Path  Pointer
-	Value interface{} // will be cloned using yaml library
+	Value interface{} // will be cloned
 }
 
-func (op ReplaceOp) Apply(doc interface{}) (interface{}, error) {
+func (op ReplaceOp) Apply(doc yamltree.YamlNode) (yamltree.YamlNode, error) {
 	// Ensure that value is not modified by future operations
-	clonedValue, err := op.cloneValue(op.Value)
+	clonedTree, err := cloneTree(op.Value)
 	if err != nil {
 		return nil, fmt.Errorf("ReplaceOp cloning value: %s", err)
 	}
+	clonedValue := yamltree.CreateYamlNodeV2(clonedTree)
 
 	tokens := op.Path.Tokens()
 
@@ -25,7 +27,7 @@ func (op ReplaceOp) Apply(doc interface{}) (interface{}, error) {
 	}
 
 	obj := doc
-	prevUpdate := func(newObj interface{}) { doc = newObj }
+	prevUpdate := func(newObj yamltree.YamlNode) { doc = newObj }
 
 	for i, token := range tokens[1:] {
 		isLast := i == len(tokens)-2
@@ -33,7 +35,7 @@ func (op ReplaceOp) Apply(doc interface{}) (interface{}, error) {
 
 		switch typedToken := token.(type) {
 		case IndexToken:
-			typedObj, ok := obj.([]interface{})
+			typedObj, ok := obj.(yamltree.YamlSequence)
 			if !ok {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
@@ -51,46 +53,47 @@ func (op ReplaceOp) Apply(doc interface{}) (interface{}, error) {
 					return nil, err
 				}
 
-				obj = typedObj[idx]
-				prevUpdate = func(newObj interface{}) { typedObj[idx] = newObj }
+				obj = typedObj.GetAt(idx)
+				prevUpdate = func(newObj yamltree.YamlNode) { typedObj.ReplaceAt(newObj, idx) }
 			}
 
 		case AfterLastIndexToken:
-			typedObj, ok := obj.([]interface{})
+			typedObj, ok := obj.(yamltree.YamlSequence)
 			if !ok {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
 
 			if isLast {
-				prevUpdate(append(typedObj, clonedValue))
+				prevUpdate(typedObj.Append(clonedValue))
 			} else {
 				return nil, fmt.Errorf("Expected after last index token to be last in path '%s'", op.Path)
 			}
 
 		case MatchingIndexToken:
-			typedObj, ok := obj.([]interface{})
+			typedObj, ok := obj.(yamltree.YamlSequence)
 			if !ok {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
 
 			var idxs []int
 
-			for itemIdx, item := range typedObj {
-				typedItem, ok := item.(map[interface{}]interface{})
+			typedObj.Each(func(item yamltree.YamlNode, itemIdx int) {
+				typedItem, ok := item.(yamltree.YamlMapping)
 				if ok {
-					if typedItem[typedToken.Key] == typedToken.Value {
+					if typedItem.Matches(typedToken.Key, typedToken.Value) {
 						idxs = append(idxs, itemIdx)
 					}
 				}
-			}
+			})
 
 			if typedToken.Optional && len(idxs) == 0 {
 				if isLast {
-					prevUpdate(append(typedObj, clonedValue))
+					prevUpdate(typedObj.Append(clonedValue))
 				} else {
-					obj = map[interface{}]interface{}{typedToken.Key: typedToken.Value}
-					prevUpdate(append(typedObj, obj))
-					// no need to change prevUpdate since matching item can only be a map
+					obj = yamltree.CreateSingleKeyYamlMappingV2(typedToken.Key, typedToken.Value)
+					prevUpdate(typedObj.Append(obj))
+					idx := typedObj.Len() - 1
+					prevUpdate = func(newObj yamltree.YamlNode) { typedObj.ReplaceAt(newObj, idx) }
 				}
 			} else {
 				if len(idxs) != 1 {
@@ -110,44 +113,44 @@ func (op ReplaceOp) Apply(doc interface{}) (interface{}, error) {
 						return nil, err
 					}
 
-					obj = typedObj[idx]
-					// no need to change prevUpdate since matching item can only be a map
+					obj = typedObj.GetAt(idx)
+					prevUpdate = func(newObj yamltree.YamlNode) { typedObj.ReplaceAt(newObj, idx) }
 				}
 			}
 
 		case KeyToken:
-			typedObj, ok := obj.(map[interface{}]interface{})
+			typedObj, ok := obj.(yamltree.YamlMapping)
 			if !ok {
 				return nil, NewOpMapMismatchTypeErr(currPath, obj)
 			}
 
 			var found bool
 
-			obj, found = typedObj[typedToken.Key]
+			obj, found = typedObj.Get(typedToken.Key)
 			if !found && !typedToken.Optional {
 				return nil, OpMissingMapKeyErr{typedToken.Key, currPath, typedObj}
 			}
 
 			if isLast {
-				typedObj[typedToken.Key] = clonedValue
+				typedObj.Replace(typedToken.Key, clonedValue)
 			} else {
-				prevUpdate = func(newObj interface{}) { typedObj[typedToken.Key] = newObj }
+				prevUpdate = func(newObj yamltree.YamlNode) { typedObj.Replace(typedToken.Key, newObj) }
 
 				if !found {
 					// Determine what type of value to create based on next token
 					switch tokens[i+2].(type) {
 					case AfterLastIndexToken:
-						obj = []interface{}{}
+						obj = yamltree.CreateYamlSequenceV2()
 					case MatchingIndexToken:
-						obj = []interface{}{}
+						obj = yamltree.CreateYamlSequenceV2()
 					case KeyToken:
-						obj = map[interface{}]interface{}{}
+						obj = yamltree.CreateYamlMappingV2()
 					default:
 						errMsg := "Expected to find key, matching index or after last index token at path '%s'"
 						return nil, fmt.Errorf(errMsg, NewPointer(tokens[:i+3]))
 					}
 
-					typedObj[typedToken.Key] = obj
+					typedObj.Replace(typedToken.Key, obj)
 				}
 			}
 
@@ -159,22 +162,43 @@ func (op ReplaceOp) Apply(doc interface{}) (interface{}, error) {
 	return doc, nil
 }
 
-func (ReplaceOp) cloneValue(in interface{}) (out interface{}, err error) {
-	defer func() {
-		if recoverVal := recover(); recoverVal != nil {
-			err = fmt.Errorf("Recovered: %s", recoverVal)
+func cloneTree(in interface{}) (out interface{}, err error) {
+	if in == nil {
+		return nil, nil
+	}
+	val := reflect.ValueOf(in)
+	if !val.IsValid() {
+		return nil, fmt.Errorf("can't clone invalid value: %#v", out)
+	}
+	if val.Kind() == reflect.Ptr && !val.IsNil() {
+		val = val.Elem()
+	}
+	switch val.Kind() {
+	case reflect.Slice:
+		array := val.Interface().([]interface{})
+		newArray := make([]interface{}, len(array))
+		for idx := range array {
+			node, err := cloneTree(array[idx])
+			if err != nil {
+				return nil, err
+			}
+			newArray[idx] = node
 		}
-	}()
-
-	bytes, err := yaml.Marshal(in)
-	if err != nil {
-		return nil, err
+		out = newArray
+	case reflect.Map:
+		newMap := map[interface{}]interface{}{}
+		for k, v := range val.Interface().(map[interface{}]interface{}) {
+			node, err := cloneTree(v)
+			if err != nil {
+				return nil, err
+			}
+			newMap[k] = node
+		}
+		out = newMap
+	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Float32, reflect.Float64:
+		out = in
+	default:
+		return nil, fmt.Errorf("unexpected node kind [%d]", val.Kind())
 	}
-
-	err = yaml.Unmarshal(bytes, &out)
-	if err != nil {
-		return nil, err
-	}
-
 	return out, nil
 }

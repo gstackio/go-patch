@@ -5,6 +5,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	. "github.com/cppforlife/go-patch/patch"
+
+	. "github.com/cppforlife/go-patch/yamltree"
 )
 
 var _ = Describe("Diff.Calculate", func() {
@@ -12,13 +14,13 @@ var _ = Describe("Diff.Calculate", func() {
 		diffOps := Diff{Left: left, Right: right}.Calculate()
 		Expect(diffOps).To(Equal(Ops(expectedOps)))
 
-		result, err := Ops(diffOps).Apply(left)
+		result, err := Ops(diffOps).Apply(CreateYamlNodeV2(left))
 		Expect(err).ToNot(HaveOccurred())
 
 		if right == nil { // gomega does not allow nil==nil comparison
 			Expect(result).To(BeNil())
 		} else {
-			Expect(result).To(Equal(right))
+			Expect(result).To(Equal(CreateYamlNodeV2(right)))
 		}
 	}
 
@@ -49,10 +51,10 @@ var _ = Describe("Diff.Calculate", func() {
 		diffOps := Diff{Left: left, Right: right, Unchecked: true}.Calculate()
 		Expect(diffOps).To(Equal(Ops(expectedOps)))
 
-		result, err := Ops(diffOps).Apply(left)
+		result, err := Ops(diffOps).Apply(CreateYamlNodeV2(left))
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(result).To(Equal(right))
+		Expect(result).To(Equal(CreateYamlNodeV2(right)))
 	})
 
 	It("can replace doc root with nil", func() {

@@ -5,6 +5,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	. "github.com/cppforlife/go-patch/patch"
+
+	. "github.com/cppforlife/go-patch/yamltree"
 )
 
 var _ = Describe("TestOp.Apply", func() {
@@ -13,25 +15,25 @@ var _ = Describe("TestOp.Apply", func() {
 			res, err := TestOp{
 				Path:  MustNewPointerFromString("/0"),
 				Value: 1,
-			}.Apply([]interface{}{1, 2, 3})
+			}.Apply(CreateYamlNodeV2([]interface{}{1, 2, 3}))
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(res).To(Equal([]interface{}{1, 2, 3}))
+			Expect(res).To(Equal(CreateYamlNodeV2([]interface{}{1, 2, 3})))
 
 			res, err = TestOp{
 				Path:  MustNewPointerFromString("/0"),
 				Value: nil,
-			}.Apply([]interface{}{nil, 2, 3})
+			}.Apply(CreateYamlNodeV2([]interface{}{nil, 2, 3}))
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(res).To(Equal([]interface{}{nil, 2, 3}))
+			Expect(res).To(Equal(CreateYamlNodeV2([]interface{}{nil, 2, 3})))
 		})
 
 		It("returns an error if value does not match", func() {
 			_, err := TestOp{
 				Path:  MustNewPointerFromString("/0"),
 				Value: 2,
-			}.Apply([]interface{}{1, 2, 3})
+			}.Apply(CreateYamlNodeV2([]interface{}{1, 2, 3}))
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Found value does not match expected value"))
@@ -39,7 +41,7 @@ var _ = Describe("TestOp.Apply", func() {
 			_, err = TestOp{
 				Path:  MustNewPointerFromString("/0"),
 				Value: 2,
-			}.Apply([]interface{}{nil})
+			}.Apply(CreateYamlNodeV2([]interface{}{nil}))
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Found value does not match expected value"))
@@ -51,25 +53,25 @@ var _ = Describe("TestOp.Apply", func() {
 			res, err := TestOp{
 				Path:   MustNewPointerFromString("/0"),
 				Absent: true,
-			}.Apply([]interface{}{})
+			}.Apply(CreateYamlNodeV2([]interface{}{}))
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(res).To(Equal([]interface{}{}))
+			Expect(res).To(Equal(CreateYamlNodeV2([]interface{}{})))
 
 			res, err = TestOp{
 				Path:   MustNewPointerFromString("/a"),
 				Absent: true,
-			}.Apply(map[interface{}]interface{}{"b": 123})
+			}.Apply(CreateYamlNodeV2(map[interface{}]interface{}{"b": 123}))
 
 			Expect(err).ToNot(HaveOccurred())
-			Expect(res).To(Equal(map[interface{}]interface{}{"b": 123}))
+			Expect(res).To(Equal(CreateYamlNodeV2(map[interface{}]interface{}{"b": 123})))
 		})
 
 		It("returns an error if parent key is absent", func() {
 			_, err := TestOp{
 				Path:   MustNewPointerFromString("/0/0"),
 				Absent: true,
-			}.Apply([]interface{}{})
+			}.Apply(CreateYamlNodeV2([]interface{}{}))
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Expected to find array index '0' but found array of length '0' for path '/0'"))
@@ -77,7 +79,7 @@ var _ = Describe("TestOp.Apply", func() {
 			_, err = TestOp{
 				Path:   MustNewPointerFromString("/a/b"),
 				Absent: true,
-			}.Apply(map[interface{}]interface{}{})
+			}.Apply(CreateYamlNodeV2(map[interface{}]interface{}{}))
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Expected to find a map key 'a' for path '/a' (found no other map keys)"))
@@ -87,7 +89,7 @@ var _ = Describe("TestOp.Apply", func() {
 			_, err := TestOp{
 				Path:   MustNewPointerFromString("/0"),
 				Absent: true,
-			}.Apply([]interface{}{1})
+			}.Apply(CreateYamlNodeV2([]interface{}{1}))
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Expected to not find '/0'"))
@@ -95,7 +97,7 @@ var _ = Describe("TestOp.Apply", func() {
 			_, err = TestOp{
 				Path:   MustNewPointerFromString("/a"),
 				Absent: true,
-			}.Apply(map[interface{}]interface{}{"a": 123})
+			}.Apply(CreateYamlNodeV2(map[interface{}]interface{}{"a": 123}))
 
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("Expected to not find '/a'"))

@@ -7,6 +7,8 @@ import (
 	. "github.com/onsi/gomega"
 
 	. "github.com/cppforlife/go-patch/patch"
+
+	. "github.com/cppforlife/go-patch/yamltree"
 )
 
 var _ = Describe("Ops.Apply", func() {
@@ -16,15 +18,15 @@ var _ = Describe("Ops.Apply", func() {
 			RemoveOp{Path: MustNewPointerFromString("/0")},
 		})
 
-		res, err := ops.Apply([]interface{}{1, 2, 3})
+		res, err := ops.Apply(CreateStockYamlSequenceV2([]interface{}{1, 2, 3}))
 		Expect(err).ToNot(HaveOccurred())
-		Expect(res).To(Equal([]interface{}{3}))
+		Expect(res).To(Equal(CreateStockYamlSequenceV2([]interface{}{3})))
 	})
 
 	It("returns original input if there are no operations", func() {
-		res, err := Ops([]Op{}).Apply([]interface{}{1, 2, 3})
+		res, err := Ops([]Op{}).Apply(CreateStockYamlSequenceV2([]interface{}{1, 2, 3}))
 		Expect(err).ToNot(HaveOccurred())
-		Expect(res).To(Equal([]interface{}{1, 2, 3}))
+		Expect(res).To(Equal(CreateStockYamlSequenceV2([]interface{}{1, 2, 3})))
 	})
 
 	It("returns error if any operation errors", func() {
@@ -33,7 +35,7 @@ var _ = Describe("Ops.Apply", func() {
 			ErrOp{errors.New("fake-err")},
 		})
 
-		_, err := ops.Apply([]interface{}{1, 2, 3})
+		_, err := ops.Apply(CreateStockYamlSequenceV2([]interface{}{1, 2, 3}))
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("fake-err"))
 	})

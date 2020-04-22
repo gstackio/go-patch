@@ -2,13 +2,15 @@ package patch
 
 import (
 	"fmt"
+
+	"github.com/cppforlife/go-patch/yamltree"
 )
 
 type RemoveOp struct {
 	Path Pointer
 }
 
-func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
+func (op RemoveOp) Apply(doc yamltree.YamlNode) (yamltree.YamlNode, error) {
 	tokens := op.Path.Tokens()
 
 	if len(tokens) == 1 {
@@ -16,7 +18,7 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 	}
 
 	obj := doc
-	prevUpdate := func(newObj interface{}) { doc = newObj }
+	prevUpdate := func(newObj yamltree.YamlNode) { doc = newObj }
 
 	for i, token := range tokens[1:] {
 		isLast := i == len(tokens)-2
@@ -24,7 +26,7 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 
 		switch typedToken := token.(type) {
 		case IndexToken:
-			typedObj, ok := obj.([]interface{})
+			typedObj, ok := obj.(yamltree.YamlSequence)
 			if !ok {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
@@ -35,31 +37,28 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 			}
 
 			if isLast {
-				newAry := []interface{}{}
-				newAry = append(newAry, typedObj[:idx]...)
-				newAry = append(newAry, typedObj[idx+1:]...)
-				prevUpdate(newAry)
+				prevUpdate(typedObj.RemoveAt(idx))
 			} else {
-				obj = typedObj[idx]
-				prevUpdate = func(newObj interface{}) { typedObj[idx] = newObj }
+				obj = typedObj.GetAt(idx)
+				prevUpdate = func(newObj yamltree.YamlNode) { typedObj.ReplaceAt(newObj, idx) }
 			}
 
 		case MatchingIndexToken:
-			typedObj, ok := obj.([]interface{})
+			typedObj, ok := obj.(yamltree.YamlSequence)
 			if !ok {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
 
 			var idxs []int
 
-			for itemIdx, item := range typedObj {
-				typedItem, ok := item.(map[interface{}]interface{})
+			typedObj.Each(func(item yamltree.YamlNode, itemIdx int) {
+				typedItem, ok := item.(yamltree.YamlMapping)
 				if ok {
-					if typedItem[typedToken.Key] == typedToken.Value {
+					if typedItem.Matches(typedToken.Key, typedToken.Value) {
 						idxs = append(idxs, itemIdx)
 					}
 				}
-			}
+			})
 
 			if typedToken.Optional && len(idxs) == 0 {
 				return doc, nil
@@ -75,24 +74,21 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 			}
 
 			if isLast {
-				newAry := []interface{}{}
-				newAry = append(newAry, typedObj[:idx]...)
-				newAry = append(newAry, typedObj[idx+1:]...)
-				prevUpdate(newAry)
+				prevUpdate(typedObj.RemoveAt(idx))
 			} else {
-				obj = typedObj[idx]
-				// no need to change prevUpdate since matching item can only be a map
+				obj = typedObj.GetAt(idx)
+				prevUpdate = func(newObj yamltree.YamlNode) { typedObj.ReplaceAt(newObj, idx) }
 			}
 
 		case KeyToken:
-			typedObj, ok := obj.(map[interface{}]interface{})
+			typedObj, ok := obj.(yamltree.YamlMapping)
 			if !ok {
 				return nil, NewOpMapMismatchTypeErr(currPath, obj)
 			}
 
 			var found bool
 
-			obj, found = typedObj[typedToken.Key]
+			obj, found = typedObj.Get(typedToken.Key)
 			if !found {
 				if typedToken.Optional {
 					return doc, nil
@@ -102,9 +98,10 @@ func (op RemoveOp) Apply(doc interface{}) (interface{}, error) {
 			}
 
 			if isLast {
-				delete(typedObj, typedToken.Key)
+				typedObj.Remove(typedToken.Key)
 			} else {
-				prevUpdate = func(newObj interface{}) { typedObj[typedToken.Key] = newObj }
+				key := typedToken.Key
+				prevUpdate = func(newObj yamltree.YamlNode) { typedObj.Replace(key, newObj) }
 			}
 
 		default:

@@ -2,13 +2,15 @@ package patch
 
 import (
 	"fmt"
+
+	"github.com/cppforlife/go-patch/yamltree"
 )
 
 type FindOp struct {
 	Path Pointer
 }
 
-func (op FindOp) Apply(doc interface{}) (interface{}, error) {
+func (op FindOp) Apply(doc yamltree.YamlNode) (yamltree.YamlNode, error) {
 	tokens := op.Path.Tokens()
 
 	if len(tokens) == 1 {
@@ -23,7 +25,7 @@ func (op FindOp) Apply(doc interface{}) (interface{}, error) {
 
 		switch typedToken := token.(type) {
 		case IndexToken:
-			typedObj, ok := obj.([]interface{})
+			typedObj, ok := obj.(yamltree.YamlSequence)
 			if !ok {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
@@ -34,9 +36,9 @@ func (op FindOp) Apply(doc interface{}) (interface{}, error) {
 			}
 
 			if isLast {
-				return typedObj[idx], nil
+				return typedObj.GetAt(idx), nil
 			} else {
-				obj = typedObj[idx]
+				obj = typedObj.GetAt(idx)
 			}
 
 		case AfterLastIndexToken:
@@ -44,25 +46,25 @@ func (op FindOp) Apply(doc interface{}) (interface{}, error) {
 			return nil, fmt.Errorf(errMsg, op.Path)
 
 		case MatchingIndexToken:
-			typedObj, ok := obj.([]interface{})
+			typedObj, ok := obj.(yamltree.YamlSequence)
 			if !ok {
 				return nil, NewOpArrayMismatchTypeErr(currPath, obj)
 			}
 
 			var idxs []int
 
-			for itemIdx, item := range typedObj {
-				typedItem, ok := item.(map[interface{}]interface{})
+			typedObj.Each(func(item yamltree.YamlNode, itemIdx int) {
+				typedItem, ok := item.(yamltree.YamlMapping)
 				if ok {
-					if typedItem[typedToken.Key] == typedToken.Value {
+					if typedItem.Matches(typedToken.Key, typedToken.Value) {
 						idxs = append(idxs, itemIdx)
 					}
 				}
-			}
+			})
 
 			if typedToken.Optional && len(idxs) == 0 {
 				// todo /blah=foo?:after, modifiers
-				obj = map[interface{}]interface{}{typedToken.Key: typedToken.Value}
+				obj = yamltree.CreateSingleKeyYamlMappingV2(typedToken.Key, typedToken.Value)
 
 				if isLast {
 					return obj, nil
@@ -78,35 +80,36 @@ func (op FindOp) Apply(doc interface{}) (interface{}, error) {
 				}
 
 				if isLast {
-					return typedObj[idx], nil
+					return typedObj.GetAt(idx), nil
 				} else {
-					obj = typedObj[idx]
+					obj = typedObj.GetAt(idx)
 				}
 			}
 
 		case KeyToken:
-			typedObj, ok := obj.(map[interface{}]interface{})
+			typedObj, ok := obj.(yamltree.YamlMapping)
 			if !ok {
 				return nil, NewOpMapMismatchTypeErr(currPath, obj)
 			}
 
 			var found bool
 
-			obj, found = typedObj[typedToken.Key]
+			obj, found = typedObj.Get(typedToken.Key)
 			if !found && !typedToken.Optional {
 				return nil, OpMissingMapKeyErr{typedToken.Key, currPath, typedObj}
 			}
 
 			if isLast {
-				return typedObj[typedToken.Key], nil
+				val, _ := typedObj.Get(typedToken.Key)
+				return val, nil
 			} else {
 				if !found {
 					// Determine what type of value to create based on next token
 					switch tokens[i+2].(type) {
 					case MatchingIndexToken:
-						obj = []interface{}{}
+						obj = yamltree.CreateYamlSequenceV2()
 					case KeyToken:
-						obj = map[interface{}]interface{}{}
+						obj = yamltree.CreateYamlMappingV2()
 					default:
 						errMsg := "Expected to find key or matching index token at path '%s'"
 						return nil, fmt.Errorf(errMsg, NewPointer(tokens[:i+3]))

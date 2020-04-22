@@ -35,10 +35,10 @@ func (d Diff) calculate(left, right interface{}, tokens []Token) []Op {
 		if typedRight, ok := right.(map[interface{}]interface{}); ok {
 			ops := []Op{}
 			var allKeys []interface{}
-			for k, _ := range typedLeft {
+			for k := range typedLeft {
 				allKeys = append(allKeys, k)
 			}
-			for k, _ := range typedRight {
+			for k := range typedRight {
 				if _, found := typedLeft[k]; !found {
 					allKeys = append(allKeys, k)
 				}

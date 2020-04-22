@@ -6,6 +6,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	. "github.com/cppforlife/go-patch/patch"
+
+	. "github.com/cppforlife/go-patch/yamltree"
 )
 
 var _ = Describe("Integration", func() {
@@ -120,7 +122,7 @@ instance_groups:
 
 		ops := append(ops1, ops2...)
 
-		res, err := ops.Apply(in)
+		res, err := ops.Apply(CreateYamlNodeV2(in))
 		Expect(err).ToNot(HaveOccurred())
 
 		outStr := `
@@ -165,7 +167,7 @@ instance_groups:
 		err = yaml.Unmarshal([]byte(outStr), &out)
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(res).To(Equal(out))
+		Expect(res).To(Equal(CreateYamlNodeV2(out)))
 	})
 
 	It("works with find op", func() {
@@ -192,7 +194,7 @@ instance_groups:
 
 		path := MustNewPointerFromString("/instance_groups/name=cloud_controller")
 
-		res, err := FindOp{Path: path}.Apply(in)
+		res, err := FindOp{Path: path}.Apply(CreateYamlNodeV2(in))
 		Expect(err).ToNot(HaveOccurred())
 
 		outStr := `
@@ -208,7 +210,7 @@ jobs:
 		err = yaml.Unmarshal([]byte(outStr), &out)
 		Expect(err).ToNot(HaveOccurred())
 
-		Expect(res).To(Equal(out))
+		Expect(res).To(Equal(CreateYamlNodeV2(out)))
 	})
 
 	It("shows custom error messages", func() {
@@ -237,7 +239,7 @@ releases:
 		ops, err := NewOpsFromDefinitions(opDefs)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = ops.Apply(in)
+		_, err = ops.Apply(CreateYamlNodeV2(in))
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(Equal(
 			"Error 'Custom error message': Expected to find a map key 'not-there' for path '/releases/0/not-there' (found map keys: 'name', 'version')"))
@@ -269,7 +271,7 @@ releases:
 		ops, err := NewOpsFromDefinitions(opDefs)
 		Expect(err).ToNot(HaveOccurred())
 
-		_, err = ops.Apply(in)
+		_, err = ops.Apply(CreateYamlNodeV2(in))
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(Equal("Expected to not find '/releases/0'"))
 	})
