@@ -1,4 +1,4 @@
-module github.com/cppforlife/go-patch
+module github.com/gstackio/go-patch
 
 go 1.14
 

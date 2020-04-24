@@ -5,7 +5,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
 
-	. "github.com/cppforlife/go-patch/patch"
+	. "github.com/gstackio/go-patch/patch"
 )
 
 var _ = Describe("ReplaceOp.Apply", func() {
